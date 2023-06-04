@@ -1,0 +1,11 @@
+[package]
+name = "sum"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+rust-bert = { git = "https://github.com/guillaume-be/rust-bert", version = "0.20.1-alpha" }
+tch = "0.13.0"
