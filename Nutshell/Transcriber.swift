@@ -79,50 +79,41 @@ private let sampleRate = 16000
         recording = false
     }
     
-    // https://developer.apple.com/documentation/screencapturekit/capturing_screen_content_in_macos
-    func createPCMBuffer(for sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
-        var ablPointer: UnsafePointer<AudioBufferList>?
-        try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
-            ablPointer = audioBufferList.unsafePointer
-        }
-        
-        guard let audioBufferList = ablPointer,
-              let absd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
-              let format = AVAudioFormat(standardFormatWithSampleRate: absd.mSampleRate, channels: absd.mChannelsPerFrame) else { return nil }
-        return AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: audioBufferList)
-    }
-
 }
 
 extension Transcriber: SCStreamDelegate, SCStreamOutput {
     
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
-        guard let samples = createPCMBuffer(for: sampleBuffer) else { return }
         
-        let arraySize = Int(samples.frameLength)
-        let data = Array(UnsafeBufferPointer(start: samples.floatChannelData![0], count:arraySize))
-        buffer.append(contentsOf: data)
-        
-        let n_samples_new = buffer.count
-        let n_samples_step = 3 * sampleRate
-        let n_samples_len = 5 * sampleRate
-        let n_samples_keep = n_samples_step
-        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
-        
-        if buffer.count > n_samples_step {
-            Task {
-                var frame = oldBuffer + buffer
-                if frame.count > n_samples_new + n_samples_take {
-                    frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
+        try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
+            guard let absd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
+                  let format = AVAudioFormat(standardFormatWithSampleRate: absd.mSampleRate, channels: absd.mChannelsPerFrame),
+                  let samples = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: audioBufferList.unsafePointer) else { return }
+            let arraySize = Int(samples.frameLength)
+            let data = Array<Float>(UnsafeBufferPointer(start: samples.floatChannelData![0], count:arraySize))
+            buffer.append(contentsOf: data)
+            
+            let n_samples_new = buffer.count
+            let n_samples_step = 3 * sampleRate
+            let n_samples_len = 5 * sampleRate
+            let n_samples_keep = n_samples_step
+            let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
+            
+            if buffer.count > n_samples_step {
+                Task {
+                    var frame = oldBuffer + buffer
+                    if frame.count > n_samples_new + n_samples_take {
+                        frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
+                    }
+                    
+                    let text = await whisper.transcribe(samples: frame)
+                    transcript.append(text)
                 }
                 
-                let text = await whisper.transcribe(samples: frame)
-                transcript.append(text)
+                oldBuffer = buffer
+                buffer = []
             }
-            
-            oldBuffer = buffer
-            buffer = []
         }
     }
 
