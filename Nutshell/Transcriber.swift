@@ -21,8 +21,12 @@ private let sampleRate = 16000
     
     private var buffer = [Float]()
     private var oldBuffer = [Float]()
+    private var iter = 0
+    private var prompts = [Int32]()
     
     @Published private(set) var transcript = String()
+    
+    private var subscriptions = Set<AnyCancellable>()
     
     func updateAvailableContent() {
         SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
@@ -55,6 +59,8 @@ private let sampleRate = 16000
     
     func startRecording() async {
         let conf = SCStreamConfiguration()
+        conf.width = 2
+        conf.height = 2
         conf.capturesAudio = true
         conf.sampleRate = sampleRate
         conf.channelCount = 1
@@ -64,10 +70,19 @@ private let sampleRate = 16000
         }
         let screen = availableContent!.displays.first!
         let filter = SCContentFilter(display: screen, excludingApplications: excluded ?? [], exceptingWindows: [])
+        
+        let delegate = StreamDelegate()
+        delegate.samples
+            .receive(on: RunLoop.main)
+            .sink(receiveCompletion: { completion in
+                print("Stopping due to \(completion)")
+                self.recording = false
+            }, receiveValue: process)
+            .store(in: &subscriptions)
 
-        stream = SCStream(filter: filter, configuration: conf, delegate: self)
-        try! stream!.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global())
-        try! stream!.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+        stream = SCStream(filter: filter, configuration: conf, delegate: delegate)
+        try! stream!.addStreamOutput(delegate, type: .screen, sampleHandlerQueue: .global())
+        try! stream!.addStreamOutput(delegate, type: .audio, sampleHandlerQueue: .global())
         try! await stream!.startCapture()
         
         recording = true
@@ -79,9 +94,36 @@ private let sampleRate = 16000
         recording = false
     }
     
+    private func process(samples: [Float]) {
+        buffer.append(contentsOf: samples)
+        
+        let n_samples_new = buffer.count
+        let n_samples_step = 3 * sampleRate
+        let n_samples_len = 5 * sampleRate
+        let n_samples_keep = n_samples_step
+        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
+        
+        if buffer.count > n_samples_step {
+            Task {
+                var frame = oldBuffer + buffer
+                if frame.count > n_samples_new + n_samples_take {
+                    frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
+                }
+                
+                let text = await whisper.transcribe(samples: frame)
+                transcript.append(text)
+            }
+            
+            oldBuffer = buffer
+            buffer = []
+        }
+    }
+    
 }
 
-extension Transcriber: SCStreamDelegate, SCStreamOutput {
+class StreamDelegate: NSObject, SCStreamDelegate, SCStreamOutput {
+    
+    let samples = PassthroughSubject<[Float], Error>()
     
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
@@ -89,40 +131,17 @@ extension Transcriber: SCStreamDelegate, SCStreamOutput {
         try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
             guard let absd = sampleBuffer.formatDescription?.audioStreamBasicDescription,
                   let format = AVAudioFormat(standardFormatWithSampleRate: absd.mSampleRate, channels: absd.mChannelsPerFrame),
-                  let samples = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: audioBufferList.unsafePointer) else { return }
-            let arraySize = Int(samples.frameLength)
-            let data = Array<Float>(UnsafeBufferPointer(start: samples.floatChannelData![0], count:arraySize))
-            buffer.append(contentsOf: data)
+                  let buffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: audioBufferList.unsafePointer) else { return }
+            let arraySize = Int(buffer.frameLength)
+            let data = Array<Float>(UnsafeBufferPointer(start: buffer.floatChannelData![0], count:arraySize))
             
-            let n_samples_new = buffer.count
-            let n_samples_step = 3 * sampleRate
-            let n_samples_len = 5 * sampleRate
-            let n_samples_keep = n_samples_step
-            let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
-            
-            if buffer.count > n_samples_step {
-                Task {
-                    var frame = oldBuffer + buffer
-                    if frame.count > n_samples_new + n_samples_take {
-                        frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
-                    }
-                    
-                    let text = await whisper.transcribe(samples: frame)
-                    transcript.append(text)
-                }
-                
-                oldBuffer = buffer
-                buffer = []
-            }
+            samples.send(data)
         }
     }
 
-    func stream(_ stream: SCStream, didStopWithError error: Error) { // stream error
-        DispatchQueue.main.async {
-            print("closing stream with error:", error)
-            print("this might be due to the window closing")
-            self.stopRecording()
-        }
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        samples.send(completion: .failure(error))
     }
     
 }
+
