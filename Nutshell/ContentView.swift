@@ -32,15 +32,12 @@ struct ContentView: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .frame(minWidth: 250)
                 Button(recording ? "Stop recording" : "Start recording", action: {
-                    Task {
-                        if recording {
-                            transcriber.stopRecording()
-                            recording = !recording
-                        }
-                        else {
-                            recording = !recording
-                            await transcriber.startRecording()
-                        }
+                    recording = !recording
+                    if recording {
+                        transcriber.stopRecording()
+                    }
+                    else {
+                        transcriber.startRecording()
                     }
                 })
                 .buttonStyle(.bordered)
@@ -48,7 +45,7 @@ struct ContentView: View {
         }
         .navigationTitle("Nutshell")
         .onAppear {
-            self.transcriber.updateAvailableContent()
+            transcriber.updateAvailableContent()
             transcriber.$transcript
                 .receive(on: RunLoop.main)
                 .assign(to: \.transcript, on: self)

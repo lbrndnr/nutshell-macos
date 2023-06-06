@@ -12,7 +12,7 @@ import Combine
 
 private let sampleRate = 16000
 
-@objc class Transcriber: NSObject, ObservableObject {
+class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput {
     
     var recording = false
     private var whisper = try! Whisper(path: Bundle.main.url(forResource: "ggml-base.en", withExtension: "bin")!.path)
@@ -25,8 +25,9 @@ private let sampleRate = 16000
     private var prompts = [Int32]()
     
     @Published private(set) var transcript = String()
-    
     private var subscriptions = Set<AnyCancellable>()
+    
+    private var queue = DispatchQueue(label: "ch.laurinbrandner.whisper")
     
     func updateAvailableContent() {
         SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
@@ -57,7 +58,7 @@ private let sampleRate = 16000
         }
     }
     
-    func startRecording() async {
+    func startRecording() {
         let conf = SCStreamConfiguration()
         conf.width = 2
         conf.height = 2
@@ -70,22 +71,15 @@ private let sampleRate = 16000
         }
         let screen = availableContent!.displays.first!
         let filter = SCContentFilter(display: screen, excludingApplications: excluded ?? [], exceptingWindows: [])
-        
-        let delegate = StreamDelegate()
-        delegate.samples
-            .receive(on: RunLoop.main)
-            .sink(receiveCompletion: { completion in
-                print("Stopping due to \(completion)")
-                self.recording = false
-            }, receiveValue: process)
-            .store(in: &subscriptions)
 
-        stream = SCStream(filter: filter, configuration: conf, delegate: delegate)
-        try! stream!.addStreamOutput(delegate, type: .screen, sampleHandlerQueue: .global())
-        try! stream!.addStreamOutput(delegate, type: .audio, sampleHandlerQueue: .global())
-        try! await stream!.startCapture()
-        
+        stream = SCStream(filter: filter, configuration: conf, delegate: self)
+        try! stream!.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+        try! stream!.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+    
         recording = true
+        Task {
+            try! await stream!.startCapture()
+        }
     }
     
     func stopRecording() {
@@ -93,37 +87,6 @@ private let sampleRate = 16000
         stream!.stopCapture()
         recording = false
     }
-    
-    private func process(samples: [Float]) {
-        buffer.append(contentsOf: samples)
-        
-        let n_samples_new = buffer.count
-        let n_samples_step = 3 * sampleRate
-        let n_samples_len = 5 * sampleRate
-        let n_samples_keep = n_samples_step
-        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
-        
-        if buffer.count > n_samples_step {
-            Task {
-                var frame = oldBuffer + buffer
-                if frame.count > n_samples_new + n_samples_take {
-                    frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
-                }
-                
-                let text = await whisper.transcribe(samples: frame)
-                transcript.append(text)
-            }
-            
-            oldBuffer = buffer
-            buffer = []
-        }
-    }
-    
-}
-
-class StreamDelegate: NSObject, SCStreamDelegate, SCStreamOutput {
-    
-    let samples = PassthroughSubject<[Float], Error>()
     
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
@@ -135,12 +98,41 @@ class StreamDelegate: NSObject, SCStreamDelegate, SCStreamOutput {
             let arraySize = Int(buffer.frameLength)
             let data = Array<Float>(UnsafeBufferPointer(start: buffer.floatChannelData![0], count:arraySize))
             
-            samples.send(data)
+            process(samples: data)
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        samples.send(completion: .failure(error))
+        stopRecording()
+    }
+    
+    private func process(samples: [Float]) {
+        buffer.append(contentsOf: samples)
+        
+        let n_samples_new = buffer.count
+        let n_samples_step = 3 * sampleRate
+        let n_samples_len = 5 * sampleRate
+        let n_samples_keep = Int(0.2 * Double(sampleRate))
+        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
+        
+        if buffer.count > n_samples_step {
+            var frame = oldBuffer + buffer
+            if frame.count > n_samples_new + n_samples_take {
+                frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
+            }
+            
+            oldBuffer = Array(buffer[buffer.count-n_samples_keep-1...buffer.count-1])
+            buffer = []
+            
+            let text = whisper.transcribe(samples: frame, prompts: [])
+            transcript.append(text)
+            
+            let newLine = max(1, (n_samples_len % n_samples_step) - 1)
+            iter += 1
+            if iter % newLine == 0 {
+                prompts = whisper.currentTokens
+            }
+        }
     }
     
 }

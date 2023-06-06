@@ -61,8 +61,8 @@
 			isa = PBXGroup;
 			children = (
 				491D026E2A29D8F800E86DD7 /* Transcriber.swift */,
-				4922603C2A1FDB4F0060629B /* ContentView.swift */,
 				492260262A1FD88A0060629B /* Whisper.swift */,
+				4922603C2A1FDB4F0060629B /* ContentView.swift */,
 				492260112A1FD7F20060629B /* NutshellApp.swift */,
 				492260152A1FD7F30060629B /* Assets.xcassets */,
 				4922601A2A1FD7F30060629B /* Nutshell.entitlements */,
