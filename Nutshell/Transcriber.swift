@@ -24,10 +24,11 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
     private var iter = 0
     private var prompts = [Int32]()
     
-    @Published private(set) var transcript = String()
+    @Published private(set) var transcript = [String]()
     private var subscriptions = Set<AnyCancellable>()
     
-    private var queue = DispatchQueue(label: "ch.laurinbrandner.whisper")
+    private var processQueue = DispatchQueue(label: "ch.laurinbrandner.processAudio")
+    private var whisperQueue = DispatchQueue(label: "ch.laurinbrandner.whisper")
     
     func updateAvailableContent() {
         SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
@@ -60,9 +61,11 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
     
     func startRecording() {
         let conf = SCStreamConfiguration()
+        conf.queueDepth = 6
         conf.width = 2
         conf.height = 2
         conf.capturesAudio = true
+//        conf.minimumFrameInterval = CMTime(seconds: 1, preferredTimescale: CMTimeScale(1))
         conf.sampleRate = sampleRate
         conf.channelCount = 1
         
@@ -73,9 +76,10 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
         let filter = SCContentFilter(display: screen, excludingApplications: excluded ?? [], exceptingWindows: [])
 
         stream = SCStream(filter: filter, configuration: conf, delegate: self)
-        try! stream!.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-        try! stream!.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
-    
+        try! stream!.addStreamOutput(self, type: .screen, sampleHandlerQueue: .global())
+        try! stream!.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+
+        transcript = [""]
         recording = true
         Task {
             try! await stream!.startCapture()
@@ -88,6 +92,40 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
         recording = false
     }
     
+    private func process(_ samples: [Float]) {
+        buffer.append(contentsOf: samples)
+        
+        let n_samples_new = buffer.count
+        let n_samples_step = 2 * sampleRate
+        let n_samples_len = 10 * sampleRate
+        let n_samples_keep = sampleRate
+        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
+        
+//        print("processing: step = \(n_samples_step), take = \(n_samples_take), new = \(n_samples_new), old = \(oldBuffer.count)")
+        
+        if buffer.count > n_samples_step {
+            oldBuffer = oldBuffer.suffix(n_samples_take) + buffer
+            buffer = []
+            let frame = oldBuffer
+            
+            let newLine = max(1, (n_samples_len / n_samples_step) - 1)
+            iter += 1
+            let startNewLine = (iter % newLine == 0)
+            if startNewLine {
+                oldBuffer = oldBuffer.suffix(n_samples_keep)
+            }
+            
+            self.whisperQueue.async {
+                let text = self.whisper.transcribe(samples: frame)
+                self.transcript[self.transcript.count-1] = text
+                
+                if startNewLine {
+                    self.transcript.append("")
+                }
+            }
+        }
+    }
+    
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
         
@@ -98,41 +136,14 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
             let arraySize = Int(buffer.frameLength)
             let data = Array<Float>(UnsafeBufferPointer(start: buffer.floatChannelData![0], count:arraySize))
             
-            process(samples: data)
+            self.processQueue.sync {
+                self.process(data)
+            }
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         stopRecording()
-    }
-    
-    private func process(samples: [Float]) {
-        buffer.append(contentsOf: samples)
-        
-        let n_samples_new = buffer.count
-        let n_samples_step = 3 * sampleRate
-        let n_samples_len = 5 * sampleRate
-        let n_samples_keep = Int(0.2 * Double(sampleRate))
-        let n_samples_take = min(oldBuffer.count, max(0, n_samples_keep + n_samples_len - n_samples_new))
-        
-        if buffer.count > n_samples_step {
-            var frame = oldBuffer + buffer
-            if frame.count > n_samples_new + n_samples_take {
-                frame = Array(frame[frame.count-1-n_samples_take-n_samples_new...frame.count-1])
-            }
-            
-            oldBuffer = Array(buffer[buffer.count-n_samples_keep-1...buffer.count-1])
-            buffer = []
-            
-            let text = whisper.transcribe(samples: frame, prompts: [])
-            transcript.append(text)
-            
-            let newLine = max(1, (n_samples_len % n_samples_step) - 1)
-            iter += 1
-            if iter % newLine == 0 {
-                prompts = whisper.currentTokens
-            }
-        }
     }
     
 }

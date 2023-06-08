@@ -32,13 +32,13 @@ struct ContentView: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .frame(minWidth: 250)
                 Button(recording ? "Stop recording" : "Start recording", action: {
-                    recording = !recording
                     if recording {
                         transcriber.stopRecording()
                     }
                     else {
                         transcriber.startRecording()
                     }
+                    recording = !recording
                 })
                 .buttonStyle(.bordered)
             }
@@ -47,7 +47,8 @@ struct ContentView: View {
         .onAppear {
             transcriber.updateAvailableContent()
             transcriber.$transcript
-                .receive(on: RunLoop.main)
+                .throttle(for: 1, scheduler: RunLoop.main, latest: true)
+                .map { $0.reduce("", +) }
                 .assign(to: \.transcript, on: self)
                 .store(in: &subscriptions)
         }
