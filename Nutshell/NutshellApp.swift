@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct NutshellApp: App {
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainView()
         }
     }
+    
 }

@@ -31,7 +31,7 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
     private var whisperQueue = DispatchQueue(label: "ch.laurinbrandner.whisper")
     
     func updateAvailableContent() {
-        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { content, error in
+        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
             if let error = error {
                 switch error {
                     case SCStreamError.userDeclined: self.requestPermissions()

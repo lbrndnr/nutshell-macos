@@ -13,8 +13,10 @@
 		492260192A1FD7F30060629B /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 492260182A1FD7F30060629B /* Preview Assets.xcassets */; };
 		4922602D2A1FD88C0060629B /* Whisper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492260262A1FD88A0060629B /* Whisper.swift */; };
 		4922602E2A1FD88C0060629B /* ggml-base.en.bin in Resources */ = {isa = PBXBuildFile; fileRef = 492260282A1FD88A0060629B /* ggml-base.en.bin */; };
-		4922603D2A1FDB4F0060629B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4922603C2A1FDB4F0060629B /* ContentView.swift */; };
+		4922603D2A1FDB4F0060629B /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4922603C2A1FDB4F0060629B /* MainView.swift */; };
+		4943FA3E2A321D250004BA33 /* TextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4943FA3D2A321D250004BA33 /* TextView.swift */; };
 		495A1D662A2761BA006A6446 /* whisper in Frameworks */ = {isa = PBXBuildFile; productRef = 495A1D652A2761BA006A6446 /* whisper */; };
+		4986639A2A3B958400585AA0 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498663992A3B958400585AA0 /* Meeting.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,7 +28,9 @@
 		4922601A2A1FD7F30060629B /* Nutshell.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nutshell.entitlements; sourceTree = "<group>"; };
 		492260262A1FD88A0060629B /* Whisper.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Whisper.swift; sourceTree = "<group>"; };
 		492260282A1FD88A0060629B /* ggml-base.en.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-base.en.bin"; sourceTree = "<group>"; };
-		4922603C2A1FDB4F0060629B /* ContentView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		4922603C2A1FDB4F0060629B /* MainView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		4943FA3D2A321D250004BA33 /* TextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextView.swift; sourceTree = "<group>"; };
+		498663992A3B958400585AA0 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Meeting.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,9 +64,11 @@
 		492260102A1FD7F20060629B /* Nutshell */ = {
 			isa = PBXGroup;
 			children = (
+				498663992A3B958400585AA0 /* Meeting.swift */,
 				491D026E2A29D8F800E86DD7 /* Transcriber.swift */,
 				492260262A1FD88A0060629B /* Whisper.swift */,
-				4922603C2A1FDB4F0060629B /* ContentView.swift */,
+				4922603C2A1FDB4F0060629B /* MainView.swift */,
+				4943FA3D2A321D250004BA33 /* TextView.swift */,
 				492260112A1FD7F20060629B /* NutshellApp.swift */,
 				492260152A1FD7F30060629B /* Assets.xcassets */,
 				4922601A2A1FD7F30060629B /* Nutshell.entitlements */,
@@ -167,9 +173,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				4922602D2A1FD88C0060629B /* Whisper.swift in Sources */,
-				4922603D2A1FDB4F0060629B /* ContentView.swift in Sources */,
+				4986639A2A3B958400585AA0 /* Meeting.swift in Sources */,
+				4922603D2A1FDB4F0060629B /* MainView.swift in Sources */,
 				492260122A1FD7F20060629B /* NutshellApp.swift in Sources */,
 				491D026F2A29D8F800E86DD7 /* Transcriber.swift in Sources */,
+				4943FA3E2A321D250004BA33 /* TextView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
