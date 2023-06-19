@@ -31,17 +31,26 @@ class Transcriber: NSObject, ObservableObject, SCStreamDelegate, SCStreamOutput 
     private var whisperQueue = DispatchQueue(label: "ch.laurinbrandner.whisper")
     
     func updateAvailableContent() {
-        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { content, error in
-            if let error = error {
-                switch error {
-                    case SCStreamError.userDeclined: self.requestPermissions()
-                    default: print("[err] failed to fetch available content:", error.localizedDescription)
-                }
-                return
+        Task {
+            do {
+                self.availableContent = try await SCShareableContent.current
             }
-            self.availableContent = content
+            catch {
+                print(error)
+            }
             assert(self.availableContent?.displays.isEmpty != nil, "There needs to be at least one display connected")
         }
+//        SCShareableContent.current { content, error in
+//            if let error = error {
+//                switch error {
+//                    case SCStreamError.userDeclined: self.requestPermissions()
+//                    default: print("[err] failed to fetch available content:", error.localizedDescription)
+//                }
+//                return
+//            }
+//            self.availableContent = content
+//            assert(self.availableContent?.displays.isEmpty != nil, "There needs to be at least one display connected")
+//        }
     }
     
     func requestPermissions() {
