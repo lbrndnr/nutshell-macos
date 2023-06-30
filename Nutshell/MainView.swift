@@ -22,14 +22,15 @@ private var timeFormatter = {
 struct MainView: View {
     
     var transcriber = Transcriber()
-    @State var recording = false
+    @State var transcript = ""
+    
+    private var recording: Bool {
+        durationInfo != nil
+    }
     @State private var durationInfo: String?
     private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     
-    @State var transcript = ""
-    
     @State private var searchQuery = ""
-    
     @State private var selectedMeeting: Meeting?
     @Binding var meetings: [Meeting] {
         didSet {
@@ -37,10 +38,26 @@ struct MainView: View {
         }
     }
     
+    @State private var showingInspector = false
+    
     @State private var subscriptions = Set<AnyCancellable>()
     
+    fileprivate init(meetings: [Meeting], showingInspector: Bool) {
+        self._meetings = .constant(meetings)
+        self._showingInspector = State(initialValue: showingInspector)
+    }
+    
+    init(meetings: Binding<[Meeting]>) {
+        self._meetings = meetings
+    }
+    
     var body: some View {
-        NavigationSplitView(sidebar: sidebar, detail: detail)
+        HStack(alignment: .top) {
+            NavigationSplitView(sidebar: sidebar, detail: detail)
+            if showingInspector {
+                inspector()
+            }
+        }
         .toolbar(content: toolbar)
         .navigationTitle("Nutshell")
         .frame(minWidth: 600)
@@ -60,12 +77,21 @@ struct MainView: View {
             .textFieldStyle(.roundedBorder)
             .frame(minWidth: 250)
         Button(action: toggleRecording) {
-            Image(systemName: "record.circle")
+            if let durationInfo = durationInfo {
+                HStack {
+                    Image(systemName: "record.circle.fill")
+                    Text(durationInfo)
+                        .monospaced()
+                }
+            }
+            else {
+                Image(systemName: "record.circle")
+            }
         }
-        if let durationInfo = durationInfo {
-            Text(durationInfo)
-                .monospaced()
+        Toggle(isOn: $showingInspector) {
+            Image(systemName: "sidebar.right")
         }
+        .toggleStyle(.button)
     }
     
     @ViewBuilder private func sidebar() -> some View {
@@ -96,6 +122,21 @@ struct MainView: View {
         .padding()
     }
     
+    @ViewBuilder private func inspector() -> some View {
+        VStack {
+            let title = Binding(get: { self.selectedMeeting?.title ?? "New Meeting"}, set: { self.selectedMeeting?.title = $0 })
+            TextField("Title", text: title)
+            
+            let date = Binding(get: { self.selectedMeeting?.date ?? Date.now }, set: { self.selectedMeeting?.date = $0 })
+            DatePicker("Date", selection: date, displayedComponents: .date)
+                .datePickerStyle(GraphicalDatePickerStyle())
+            Spacer()
+        }
+        .padding()
+        .background(Color(nsColor: NSColor.underPageBackgroundColor))
+        .frame(width: 150)
+    }
+    
     private func toggleRecording() {
         if recording {
             transcriber.stopRecording()
@@ -106,13 +147,13 @@ struct MainView: View {
         }
         else {
             let startDate = Date.now
+            durationInfo = timeFormatter.string(from: startDate, to: startDate)
             transcriber.startRecording()
             timer.map { timeFormatter.string(from: startDate, to: $0) }
                 .assign(to: \.durationInfo, on: self)
                 .store(in: &subscriptions)
             
         }
-        recording = !recording
     }
     
 }
@@ -123,8 +164,7 @@ struct MainView_Previews: PreviewProvider {
         let text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. In vulputate semper lorem eget aliquam. Vivamus nulla turpis, interdum quis eleifend sed, sagittis sed felis. In ac velit pretium, facilisis erat quis, ullamcorper nulla. Vivamus non est sem. Nulla placerat, tortor vel tincidunt pretium, eros erat posuere risus, hendrerit commodo dui tortor eu ante. Nulla facilisi. Maecenas id neque ac dui rhoncus sollicitudin. Vestibulum mi leo, commodo eu posuere sed, consectetur sit amet massa. Suspendisse sit amet tempor quam. Vestibulum scelerisque massa massa, vel congue ex aliquet quis. Suspendisse fermentum erat id sem ornare pharetra. Aliquam sit amet nisl eget dui interdum tincidunt."
         let meeting = Meeting(date: Date.now, title: "Super cool meeting", text: text)
         
-//        MainView(transcript: text, meetings: [meeting])
-        MainView(meetings: .constant([meeting]))
+        MainView(meetings: [meeting], showingInspector: true)
     }
     
 }
